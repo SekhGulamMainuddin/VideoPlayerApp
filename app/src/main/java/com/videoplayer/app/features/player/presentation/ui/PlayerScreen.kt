@@ -70,6 +70,7 @@ fun PlayerScreen() {
                         playerView.setBackgroundColor(android.graphics.Color.BLACK)
                     }
                 },
+
                 Modifier
                     .then(
                         if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) Modifier.fillMaxSize()
