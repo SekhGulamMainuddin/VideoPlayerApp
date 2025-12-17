@@ -1,5 +1,7 @@
 package com.videoplayer.app.features.player.presentation.viewmodel
 
+import android.media.MediaDrm
+import android.util.Log
 import androidx.core.net.toUri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -55,9 +57,13 @@ class PlayerViewModel @Inject constructor(
         )
 
         setNewVideoUrl(
-            "https://storage.googleapis.com/shaka-demo-assets/bbb-dark-truths/dash.mpd",
+            "https://storage.googleapis.com/wvmedia/cenc/h264/tears/tears.mpd",
             true
         )
+
+        val mediaDrm = MediaDrm(C.WIDEVINE_UUID)
+        Log.d("SEKH BRO ", mediaDrm.getPropertyString("securityLevel"))
+
     }
 
     fun setNewVideoUrl(url: String, restore: Boolean) {
@@ -70,7 +76,18 @@ class PlayerViewModel @Inject constructor(
         videoState = VideoState(url, restorePosition)
         savedState[CURRENT_VIDEO] = videoState
 
-        player.setMediaItem(MediaItem.fromUri(url.toUri()))
+        val mediaItem = MediaItem.Builder()
+            .setUri(url)
+            .setDrmConfiguration(
+                MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+                    .setLicenseUri(
+                        "https://proxy.uat.widevine.com/proxy?provider=widevine_test"
+                    )
+                    .build()
+            )
+            .build()
+
+        player.setMediaItem(mediaItem)
         player.prepare()
         player.seekTo(restorePosition)
         player.playWhenReady = true
