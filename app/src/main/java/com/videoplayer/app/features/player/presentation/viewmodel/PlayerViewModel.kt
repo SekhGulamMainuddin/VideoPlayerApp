@@ -4,12 +4,18 @@ import androidx.core.net.toUri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.TrackGroup
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 import java.io.Serializable
@@ -18,28 +24,44 @@ import javax.inject.Inject
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val savedState: SavedStateHandle,
-    val player: ExoPlayer
+    val player: ExoPlayer,
+    private val trackSelector: DefaultTrackSelector
 ) : ViewModel() {
 
     private var progressJob: Job? = null
 
     var videoState: VideoState? = savedState[CURRENT_VIDEO]
 
+    private val _videoQuality = MutableStateFlow<List<VideoQuality>>(emptyList())
+    val videoQuality: StateFlow<List<VideoQuality>>
+        get() = _videoQuality
+
     init {
-        player.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (isPlaying) startProgressTracking()
-                else stopProgressTracking()
-            }
-        })
+        player.addListener(
+            object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (isPlaying) startProgressTracking()
+                    else stopProgressTracking()
+                }
+
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    super.onPlaybackStateChanged(playbackState)
+
+                    if (playbackState == Player.STATE_READY) {
+                        _videoQuality.value = getVideoQualities()
+                    }
+                }
+            },
+        )
 
         setNewVideoUrl(
-            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+            "https://storage.googleapis.com/shaka-demo-assets/bbb-dark-truths/dash.mpd",
             true
         )
     }
 
     fun setNewVideoUrl(url: String, restore: Boolean) {
+        _videoQuality.value = emptyList()
         stopProgressTracking()
 
         val restorePosition =
@@ -73,12 +95,67 @@ class PlayerViewModel @Inject constructor(
         progressJob = null
     }
 
+    fun getVideoQualities(): List<VideoQuality> {
+        val qualities = mutableListOf<VideoQuality>()
+
+        player.currentTracks.groups.forEach { group ->
+            if (group.type == C.TRACK_TYPE_VIDEO) {
+                repeat(group.length) { index ->
+                    val format = group.getTrackFormat(index)
+
+                    qualities.add(
+                        VideoQuality(
+                            group = group.mediaTrackGroup,
+                            trackIndex = index,
+                            width = format.width,
+                            height = format.height,
+                            bitrate = format.bitrate
+                        )
+                    )
+                }
+            }
+        }
+
+        return qualities
+            .distinctBy { it.height }
+            .sortedBy { it.height }
+    }
+
+    fun onQualitySelected(quality: VideoQuality?) {
+        val builder = trackSelector.buildUponParameters()
+
+        if (quality == null) {
+            // AUTO
+            builder.clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+        } else {
+            builder
+                .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                .addOverride(
+                    TrackSelectionOverride(
+                        quality.group,
+                        listOf(quality.trackIndex)
+                    )
+                )
+        }
+
+        trackSelector.parameters = builder.build()
+    }
+
     override fun onCleared() {
         stopProgressTracking()
         player.release()
         super.onCleared()
     }
 }
+
+data class VideoQuality(
+    val group: TrackGroup,
+    val trackIndex: Int,
+    val width: Int,
+    val height: Int,
+    val bitrate: Int
+)
+
 
 data class VideoState(
     val url: String,

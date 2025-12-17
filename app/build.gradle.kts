@@ -44,6 +44,8 @@ android {
 }
 
 dependencies {
+    implementation("androidx.media3:media3-exoplayer-dash:1.3.1")
+
     implementation(libs.hilt.navigation.compose)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
