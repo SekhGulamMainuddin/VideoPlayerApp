@@ -83,6 +83,7 @@ class PlayerViewModel @Inject constructor(
                     .setLicenseUri(
                         "https://proxy.uat.widevine.com/proxy?provider=widevine_test"
                     )
+                    .setMultiSession(true)
                     .build()
             )
             .build()
